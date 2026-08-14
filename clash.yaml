@@ -9,7 +9,6 @@ proxies:
     public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
     udp: true
     remote-dns-resolve: true
-
   - name: "WARP-Endpoint-2"
     type: WireGuard
     server: 162.159.193.10
@@ -20,7 +19,6 @@ proxies:
     public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
     udp: true
     remote-dns-resolve: true
-
   - name: "WARP-Endpoint-3"
     type: WireGuard
     server: 188.114.96.1
