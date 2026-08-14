@@ -20,9 +20,9 @@ jobs:
           mkdir -p public
           
           # ================= 请在这里填入你获取到的专属信息 =================
-          PRIV_KEY="这里填入你的PrivateKey"
-          IPV4="这里填入你的IPv4"
-          IPV6="这里填入你的IPv6"
+          PRIV_KEY="UENZ8NpT1Nuh/PtKjhBcjorImzOkPGzl4/DKUwRfhns="
+          IPV4="172.16.0.2"
+          IPV6="2606:4700:110:8596:26a0:cfb0:c417:1b63"
           # ================================================================
 
           cat <<EOF > generate_v2ray.py
