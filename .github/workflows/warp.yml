@@ -1,4 +1,4 @@
-name: Generate WARP Subscription
+name: Generate WARP SubscriptionV2
 
 on:
   schedule:
@@ -19,23 +19,23 @@ jobs:
         run: |
           mkdir -p public
 
-          # 1. 下载官方最新的 wgcf 工具 (来自 ViRb3 官方仓库)
+          # 1. 下载官方最新 wgcf 工具
           curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
           chmod +x wgcf
 
-          # 2. 注册 WARP 账号并生成配置文件 (wgcf-profile.ini)
+          # 2. 注册 WARP 账号并生成配置
           ./wgcf register --accept-tod
           ./wgcf generate
 
-          # 3. 解析生成的 profile 文件，安全提取密钥与 IP 地址
+          # 3. 提取 Key 和 IP 变量
           PRIV_KEY=$(grep 'PrivateKey' wgcf-profile.ini | awk -F '= ' '{print $2}')
           IPV4=$(grep 'Address' wgcf-profile.ini | head -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1)
           IPV6=$(grep 'Address' wgcf-profile.ini | tail -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1)
 
-          # 4. 生成包含优选 IP 的 Clash (Mihomo) 配置文件
+          # 4. 生成 Clash YAML 配置
           cat <<EOF > public/clash.yaml
           proxies:
-            - name: "WARP-优选Endpoint-1"
+            - name: "WARP-Endpoint-1"
               type: WireGuard
               server: 162.159.192.1
               port: 2408
@@ -46,7 +46,7 @@ jobs:
               udp: true
               remote-dns-resolve: true
 
-            - name: "WARP-优选Endpoint-2"
+            - name: "WARP-Endpoint-2"
               type: WireGuard
               server: 162.159.193.10
               port: 1701
@@ -57,7 +57,7 @@ jobs:
               udp: true
               remote-dns-resolve: true
 
-            - name: "WARP-优选Endpoint-3"
+            - name: "WARP-Endpoint-3"
               type: WireGuard
               server: 188.114.96.1
               port: 500
