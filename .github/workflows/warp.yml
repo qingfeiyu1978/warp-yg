@@ -3,7 +3,10 @@ name: Generate WARP Subscription
 on:
   schedule:
     - cron: '0 20 * * *'  # 北京时间每天早晨 04:00 自动运行
-  workflow_dispatch:       # 支持在 GitHub 界面手动点按钮运行
+  workflow_dispatch:       # 支持手动点击按钮运行
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -12,63 +15,59 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install Dependencies
+      - name: Install wgcf & Generate Config
         run: |
-          pip install requests pyyaml
-
-      - name: Generate WARP Config
-        run: |
-          # 建立输出目录
           mkdir -p public
 
-          # 调用注册 API 获取 WARP 账号参数并生成 Clash 格式节点
-          python -c '
-          import requests, json, os
+          # 1. 下载官方最新的 wgcf 工具 (来自 ViRb3 官方仓库)
+          curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
+          chmod +x wgcf
 
-          # 1. 注册 WARP 账号获取密钥
-          url = "https://api.cloudflareclient.com/v0a1922/reg"
-          headers = {"User-Agent": "okhttp/3.12.1", "Content-Type": "application/json"}
-          res = requests.post(url, headers=headers, json={}).json()
+          # 2. 注册 WARP 账号并生成配置文件 (wgcf-profile.ini)
+          ./wgcf register --accept-tod
+          ./wgcf generate
 
-          privkey = res["config"]["peers"][0]["public_key"] # 此处可搭配 wgcf 生成私钥
-          ipv4 = res["config"]["interface"]["addresses"]["v4"]
-          ipv6 = res["config"]["interface"]["addresses"]["v6"]
+          # 3. 解析生成的 profile 文件，安全提取密钥与 IP 地址
+          PRIV_KEY=$(grep 'PrivateKey' wgcf-profile.ini | awk -F '= ' '{print $2}')
+          IPV4=$(grep 'Address' wgcf-profile.ini | head -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1)
+          IPV6=$(grep 'Address' wgcf-profile.ini | tail -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1)
 
-          # 2. 预设国内三网常用的 Endpoint IP 池
-          endpoints = [
-            "162.159.192.1:2408",
-            "162.159.193.10:1701",
-            "188.114.96.1:500",
-            "188.114.97.1:1701",
-            "162.159.195.1:500"
-          ]
-
-          # 生成配置输出 (Clash/Mihomo 样例)
-          yaml_content = f"""
+          # 4. 生成包含优选 IP 的 Clash (Mihomo) 配置文件
+          cat <<EOF > public/clash.yaml
           proxies:
-          """
-          for i, ep in enumerate(endpoints):
-              ip, port = ep.split(":")
-              yaml_content += f"""
-            - name: "WARP-Node-{i+1}"
+            - name: "WARP-优选Endpoint-1"
               type: WireGuard
-              server: {ip}
-              port: {port}
-              ip: "{ipv4}"
-              ipv6: "{ipv6}"
-              private-key: "YOUR_GENERATED_PRIVATE_KEY"
+              server: 162.159.192.1
+              port: 2408
+              ip: "$IPV4"
+              ipv6: "$IPV6"
+              private-key: "$PRIV_KEY"
               public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
               udp: true
               remote-dns-resolve: true
-          """
-          with open("public/clash.yaml", "w", encoding="utf-8") as f:
-              f.write(yaml_content)
-          '
+
+            - name: "WARP-优选Endpoint-2"
+              type: WireGuard
+              server: 162.159.193.10
+              port: 1701
+              ip: "$IPV4"
+              ipv6: "$IPV6"
+              private-key: "$PRIV_KEY"
+              public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
+              udp: true
+              remote-dns-resolve: true
+
+            - name: "WARP-优选Endpoint-3"
+              type: WireGuard
+              server: 188.114.96.1
+              port: 500
+              ip: "$IPV4"
+              ipv6: "$IPV6"
+              private-key: "$PRIV_KEY"
+              public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
+              udp: true
+              remote-dns-resolve: true
+          EOF
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
