@@ -1,4 +1,4 @@
-name: Generate WARP SubscriptionV2
+name: Generate WARP Subscription
 
 on:
   schedule:
@@ -23,8 +23,8 @@ jobs:
           curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
           chmod +x wgcf
 
-          # 2. 注册 WARP 账号并生成配置
-          ./wgcf register --accept-tod
+          # 2. 注册 WARP 账号并生成配置 (注意这里修正为 --accept-tos)
+          ./wgcf register --accept-tos
           ./wgcf generate
 
           # 3. 提取 Key 和 IP 变量
