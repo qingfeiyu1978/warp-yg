@@ -1,4 +1,4 @@
-name: Generate WARP Subscription
+name: Generate WARP SubscriptionV3
 
 on:
   schedule:
