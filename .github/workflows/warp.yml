@@ -1,4 +1,4 @@
-name: Generate WARP SubscriptionV5
+name: Generate WARP SubscriptionV6
 
 on:
   schedule:
@@ -15,70 +15,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install wgcf & Generate Config
+      - name: Generate V2Ray Subscription
         run: |
           mkdir -p public
+          
+          # ================= 请在这里填入你刚刚获取到的信息 =================
+          PRIV_KEY="UENZ8NpT1Nuh/PtKjhBcjorImzOkPGzl4/DKUwRfhns="
+          IPV4="172.16.0.2"
+          IPV6="2606:4700:110:8596:26a0:cfb0:c417:1b63"
+          # ================================================================
 
-          # 1. 下载工具并注册 WARP
-          curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
-          chmod +x wgcf
-          ./wgcf register --accept-tos
-          ./wgcf generate
-
-          # 2. 提取 Key 和 IP 变量 (增加 tr -d '\r' 防止换行符干扰)
-          PRIV_KEY=$(grep 'PrivateKey' wgcf-profile.ini | awk -F '= ' '{print $2}' | tr -d '\r')
-          IPV4=$(grep 'Address' wgcf-profile.ini | head -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1 | tr -d '\r')
-          IPV6=$(grep 'Address' wgcf-profile.ini | tail -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1 | tr -d '\r')
-
-          # 3. 生成 Clash 配置
-          cat <<EOF > public/clash.yaml
-          proxies:
-            - name: "WARP-Endpoint-1"
-              type: WireGuard
-              server: 162.159.192.1
-              port: 2408
-              ip: "$IPV4"
-              ipv6: "$IPV6"
-              private-key: "$PRIV_KEY"
-              public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
-              udp: true
-              remote-dns-resolve: true
-            - name: "WARP-Endpoint-2"
-              type: WireGuard
-              server: 162.159.193.10
-              port: 1701
-              ip: "$IPV4"
-              ipv6: "$IPV6"
-              private-key: "$PRIV_KEY"
-              public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
-              udp: true
-              remote-dns-resolve: true
-            - name: "WARP-Endpoint-3"
-              type: WireGuard
-              server: 188.114.96.1
-              port: 500
-              ip: "$IPV4"
-              ipv6: "$IPV6"
-              private-key: "$PRIV_KEY"
-              public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
-              udp: true
-              remote-dns-resolve: true
-          EOF
-
-          # ================= 以下是全新的 Python 原生生成 V2Ray 链接逻辑 =================
-
-          # 4. 运行 Python 脚本生成 wireguard:// 链接并 Base64 编码
           cat <<EOF > generate_v2ray.py
           import base64
           import urllib.parse
           
-          # 接收 bash 提取的变量
           priv_key = "$PRIV_KEY"
           ipv4 = "$IPV4/32"
           ipv6 = "$IPV6/128"
           pub_key = "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
           
-          # URL 编码处理特殊字符
           address_enc = urllib.parse.quote(f"{ipv4},{ipv6}")
           pub_enc = urllib.parse.quote(pub_key)
           priv_enc = urllib.parse.quote(priv_key)
@@ -92,14 +47,11 @@ jobs:
           nodes = []
           for name, ip, port in endpoints:
               name_enc = urllib.parse.quote(name)
-              # 拼装为 v2rayN 支持的 wireguard:// 协议
               url = f"wireguard://{priv_enc}@{ip}:{port}/?publickey={pub_enc}&address={address_enc}&mtu=1280#{name_enc}"
               nodes.append(url)
               
-          # 将这三个链接拼在一起并进行 Base64 加密
           b64_content = base64.b64encode("\n".join(nodes).encode('utf-8')).decode('utf-8')
           
-          # 输出为 v2ray.txt
           with open("public/v2ray.txt", "w") as f:
               f.write(b64_content)
           EOF
