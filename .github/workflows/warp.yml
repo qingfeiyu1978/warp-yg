@@ -1,9 +1,9 @@
-name: Generate WARP SubscriptionV4
+name: Generate WARP SubscriptionV5
 
 on:
   schedule:
-    - cron: '0 20 * * *'  # 北京时间每天早晨 04:00 自动运行
-  workflow_dispatch:       # 支持手动点击按钮运行
+    - cron: '0 20 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,24 +15,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install wgcf, Generate Config & Convert
+      - name: Install wgcf & Generate Config
         run: |
           mkdir -p public
 
-          # 1. 下载官方最新 wgcf 工具
+          # 1. 下载工具并注册 WARP
           curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
           chmod +x wgcf
-
-          # 2. 注册 WARP 账号并生成配置
           ./wgcf register --accept-tos
           ./wgcf generate
 
-          # 3. 提取 Key 和 IP 变量
-          PRIV_KEY=$(grep 'PrivateKey' wgcf-profile.ini | awk -F '= ' '{print $2}')
-          IPV4=$(grep 'Address' wgcf-profile.ini | head -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1)
-          IPV6=$(grep 'Address' wgcf-profile.ini | tail -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1)
+          # 2. 提取 Key 和 IP 变量 (增加 tr -d '\r' 防止换行符干扰)
+          PRIV_KEY=$(grep 'PrivateKey' wgcf-profile.ini | awk -F '= ' '{print $2}' | tr -d '\r')
+          IPV4=$(grep 'Address' wgcf-profile.ini | head -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1 | tr -d '\r')
+          IPV6=$(grep 'Address' wgcf-profile.ini | tail -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1 | tr -d '\r')
 
-          # 4. 生成 Clash YAML 配置 (保留作为原始数据源)
+          # 3. 生成 Clash 配置
           cat <<EOF > public/clash.yaml
           proxies:
             - name: "WARP-Endpoint-1"
@@ -45,7 +43,6 @@ jobs:
               public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
               udp: true
               remote-dns-resolve: true
-
             - name: "WARP-Endpoint-2"
               type: WireGuard
               server: 162.159.193.10
@@ -56,7 +53,6 @@ jobs:
               public-key: "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
               udp: true
               remote-dns-resolve: true
-
             - name: "WARP-Endpoint-3"
               type: WireGuard
               server: 188.114.96.1
@@ -69,22 +65,46 @@ jobs:
               remote-dns-resolve: true
           EOF
 
-          # ================= 以下是新增的自动转换逻辑 =================
+          # ================= 以下是全新的 Python 原生生成 V2Ray 链接逻辑 =================
 
-          # 5. 下载并后台运行开源的 subconverter
-          wget -q https://github.com/tindy2013/subconverter/releases/latest/download/subconverter_linux64.tar.gz
-          tar -zxf subconverter_linux64.tar.gz
-          ./subconverter/subconverter &
-          sleep 2 # 等待转换服务启动
-
-          # 6. 使用 Python 启动一个临时本地 HTTP 服务，供 subconverter 读取 clash.yaml
-          cd public
-          python3 -m http.server 8080 &
-          cd ..
-          sleep 2
-
-          # 7. 调用本地接口，将 clash 转换为 v2ray 订阅格式，并输出为 v2ray.txt
-          curl -s "http://127.0.0.1:25500/sub?target=v2ray&url=http://127.0.0.1:8080/clash.yaml" -o public/v2ray.txt
+          # 4. 运行 Python 脚本生成 wireguard:// 链接并 Base64 编码
+          cat <<EOF > generate_v2ray.py
+          import base64
+          import urllib.parse
+          
+          # 接收 bash 提取的变量
+          priv_key = "$PRIV_KEY"
+          ipv4 = "$IPV4/32"
+          ipv6 = "$IPV6/128"
+          pub_key = "bmXOC+F1JyAwbTOftA8uF264Nwg13U97Bf2y6F73k3U="
+          
+          # URL 编码处理特殊字符
+          address_enc = urllib.parse.quote(f"{ipv4},{ipv6}")
+          pub_enc = urllib.parse.quote(pub_key)
+          priv_enc = urllib.parse.quote(priv_key)
+          
+          endpoints = [
+              ("WARP-2408", "162.159.192.1", 2408),
+              ("WARP-1701", "162.159.193.10", 1701),
+              ("WARP-500", "188.114.96.1", 500)
+          ]
+          
+          nodes = []
+          for name, ip, port in endpoints:
+              name_enc = urllib.parse.quote(name)
+              # 拼装为 v2rayN 支持的 wireguard:// 协议
+              url = f"wireguard://{priv_enc}@{ip}:{port}/?publickey={pub_enc}&address={address_enc}&mtu=1280#{name_enc}"
+              nodes.append(url)
+              
+          # 将这三个链接拼在一起并进行 Base64 加密
+          b64_content = base64.b64encode("\n".join(nodes).encode('utf-8')).decode('utf-8')
+          
+          # 输出为 v2ray.txt
+          with open("public/v2ray.txt", "w") as f:
+              f.write(b64_content)
+          EOF
+          
+          python3 generate_v2ray.py
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
