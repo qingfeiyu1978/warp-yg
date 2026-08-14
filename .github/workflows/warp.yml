@@ -1,4 +1,4 @@
-name: Generate WARP SubscriptionV3
+name: Generate WARP SubscriptionV4
 
 on:
   schedule:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install wgcf & Generate Config
+      - name: Install wgcf, Generate Config & Convert
         run: |
           mkdir -p public
 
@@ -23,7 +23,7 @@ jobs:
           curl -fsSL https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_linux_amd64 -o wgcf
           chmod +x wgcf
 
-          # 2. 注册 WARP 账号并生成配置 (注意这里修正为 --accept-tos)
+          # 2. 注册 WARP 账号并生成配置
           ./wgcf register --accept-tos
           ./wgcf generate
 
@@ -32,7 +32,7 @@ jobs:
           IPV4=$(grep 'Address' wgcf-profile.ini | head -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1)
           IPV6=$(grep 'Address' wgcf-profile.ini | tail -n 1 | awk -F '= ' '{print $2}' | cut -d '/' -f 1)
 
-          # 4. 生成 Clash YAML 配置
+          # 4. 生成 Clash YAML 配置 (保留作为原始数据源)
           cat <<EOF > public/clash.yaml
           proxies:
             - name: "WARP-Endpoint-1"
@@ -68,6 +68,23 @@ jobs:
               udp: true
               remote-dns-resolve: true
           EOF
+
+          # ================= 以下是新增的自动转换逻辑 =================
+
+          # 5. 下载并后台运行开源的 subconverter
+          wget -q https://github.com/tindy2013/subconverter/releases/latest/download/subconverter_linux64.tar.gz
+          tar -zxf subconverter_linux64.tar.gz
+          ./subconverter/subconverter &
+          sleep 2 # 等待转换服务启动
+
+          # 6. 使用 Python 启动一个临时本地 HTTP 服务，供 subconverter 读取 clash.yaml
+          cd public
+          python3 -m http.server 8080 &
+          cd ..
+          sleep 2
+
+          # 7. 调用本地接口，将 clash 转换为 v2ray 订阅格式，并输出为 v2ray.txt
+          curl -s "http://127.0.0.1:25500/sub?target=v2ray&url=http://127.0.0.1:8080/clash.yaml" -o public/v2ray.txt
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
